@@ -1,5 +1,14 @@
+#ifndef BAUD
+#define BAUD 9600
+#endif
+#ifndef F_CPU
+#define F_CPU 16000000UL
+#endif 
+
+#include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
+#include <util/setbaud.h>
 
 //
 // Pin Map
@@ -43,6 +52,7 @@ ISR(PCINT0_vect) {
 		// CS is high.  Nothing to see, not for us.
 		return;
 	} 
+  PORTB ^= 0x20;
 
 	uint8_t addr;
 	// CS is low, we have data to work with.
@@ -85,9 +95,35 @@ ISR(PCINT0_vect) {
 		}
 }
 
+void uart_putchar(char c) {
+    // Wait until the register to write to is free.
+    loop_until_bit_is_set(UCSR0A, UDRE0);
+
+    // Write the byte to the register.
+    UDR0 = c;
+}
+
+void uart_putstr(char *data) {
+    // Loop until end of string writing char by char.
+    while(*data){
+      uart_putchar(*data++);
+    }
+}
+
+char HEX[]="0123456789ABCDEF";
 
 // the loop function runs over and over again forever
 void loop() {
+        uart_putstr("hello\n\r");
+	for(int i=0;i<sizeof(registers);i++) {
+		uart_putchar(HEX[(registers[i] & 0xF0)>>4] );
+		uart_putchar(HEX[(registers[i] & 0xF)] );
+		uart_putchar(' ');
+	}
+	uart_putchar('\n');
+	uart_putchar('\r');
+
+        _delay_ms(1000);
 	
 }
 
@@ -107,8 +143,22 @@ void setup() {
 }
 
 
+
+void uart_init() {
+    // Upper and lower bytes of the calculated prescaler value for baud.
+    UBRR0H = UBRRH_VALUE;
+    UBRR0L = UBRRL_VALUE;
+
+    // Configure data frame size to 8-bits.
+    UCSR0C = _BV(UCSZ01) | _BV(UCSZ00);
+
+    // Configure to enable transmitter.
+    UCSR0B = _BV(TXEN0);
+}
+
 int main() {
 	setup();
+	uart_init();
 	flashOnce();
 	flashOnce();
 	for(;;) loop();
