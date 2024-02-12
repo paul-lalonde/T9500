@@ -8,7 +8,7 @@
 
 
 #define handlertab 0x400
-#define tabsize 12
+#define tabsize 16
 ;;;;;;;;;;;;
 ; We allocate some registers *just* for the interrupt handler.  
 ; r0-r16 are reserved for userland
@@ -328,9 +328,8 @@ PCINT0_handler:
 	; Read the lines.  We sort out whether CS was high or low after
 	; doing the urgent thing.  CS going high means we don't commit.
 
-	in	itemp2, PORTD ;; If it was a data write, we needed to grab it, stat.
 	in	itemp, PINB  ;; Ditto for our address lines.
-	cbr itemp, 0b11110000 ;; Don't look at that bit...
+	; cbr itemp, 0b11110000 ;; Don't look at the CS bit; Can save this instruction by going to 16 byte jumps and ignoring the high order bits.
 
 	; Now we jump to our handler
 	mul itemp, tabsize_r  ;; Yes, we burn a register to hold the multiplier
@@ -348,51 +347,73 @@ PCINT0_handler:
 mov status, ZL
 .ENDMACRO
 .cseg
+
+; First set of 8 targets correspond to a write (line 4 is ~W, so a zero bit means write)
 .org handlertab + 0 * tabsize
 TABOFFSET:
-	toggle
+	in	status, PORTD ;  Gets caught in main.
 	reti
 .org handlertab + 1 * tabsize
-	toggle
+	in      regreq, PORTD ; next register to read
 	reti
 .org handlertab + 2 * tabsize
-	toggle
+	in 	value, PORTD
+	ldi	XH, HIGH(REG)
+	ldi	XL, LOW(REG)
+	add XL, regreq
+	st	X, value
 	reti
 .org handlertab + 3 * tabsize
-	toggle
 	reti
 .org handlertab + 4 * tabsize
-	toggle
 	reti
 .org handlertab + 5 * tabsize
-	toggle
 	reti
 .org handlertab + 6 * tabsize
-	toggle
 	reti
 .org handlertab + 7 * tabsize
-	toggle
 	reti
+
+; Second set of 8 targets are reads.  
 .org handlertab + 8 * tabsize
-	toggle
+	; addr = 0: status register
+	SER tempH
+	sts DDRD, tempH
+	sts PORTD, status	
+	NOP
+	NOP
+	NOP
+	sts 		DDRD, r0
+	ser		tempH
+	out		PORTD, tempH ; PORTD pullups
 	reti
 .org handlertab + 9 * tabsize
-	toggle
+	; addr = 1; I'm telling the Z80 what register is coming.  Comes after we IRQ and setup regreq and value
+	SER tempH
+	sts DDRD, tempH
+	NOP
+	NOP
+	NOP
+	sts 		DDRD, r0
+	out		PORTD, tempH ; PORTD pullups
 	reti
 .org handlertab + 10 * tabsize
-	toggle
+	; addr = 1; I'm telling the Z80 what register is coming.  Comes after we IRQ and setup regreq and value
+	SER tempH
+	sts DDRD, tempH
+	NOP
+	NOP
+	NOP
+	sts 		DDRD, r0
+	out		PORTD, tempH ; PORTD pullups
 	reti
 .org handlertab + 11 * tabsize
-	toggle
 	reti
 .org handlertab + 12 * tabsize
-	toggle
 	reti
 .org handlertab + 13 * tabsize
-	toggle
 	reti
 .org handlertab + 14 * tabsize
-	toggle
 	reti
 .org handlertab + 15 * tabsize
 mov status, ZL
@@ -403,7 +424,18 @@ BSS:
 StatusShadow:
 .db 0,0
 Registers:
-.db "abcdefghijklmnopqrstuvw",0
+.db 0b00100000, 0b00000000 ; IC1 Splits, IC2 Pitch, transposer
+.db 0b00000000, 0b00000000 ; IC3 meory, fingered...; IC4 tempo, fills
+.db 0b10001000, 0b00000000 ; IC5 pops, disco, reggae, big band; IC6 march, samba, salsa, rock
+.db 0b00000000, 0b00000000 ; IC 7, IC 8
+.db 0b00010001, 0b00000000 ; IC9 Orchestra; IC10 pause
+.db 0b00000000, 0b00000000 ; ic11, ic12
+.db 0b00000000, 0b00000000 ; ic 13, ic14
+.db 0b10001000, 0b00000000 ; ic 15 piano
+.db 0b00000000, 0b00000000 ; IC17, IC18
+.db 0b00000000, 0b00000000 ; IC19, IC20
+.db 0b00000000, 0b00000000 ; IC21 bass...; IC22 save
+.db 0b00000000, 0b00000000 ; IC23 LOAD, IC NULL
 hello:
 .db "hello, world!", 0xA, 0xD, 0
 Status:
